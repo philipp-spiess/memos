@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Merriweather", Georgia, serif;
+  --color-bg: #fffcf5;
+  --color-bg-dark: #161514;
+  --color-fg: 0, 0, 0;
+  --color-fg-dark: 255, 255, 255;
+  --color-muted: rgba(0, 0, 0, 0.5);
+  --color-muted-dark: rgba(255, 255, 255, 0.6);
+  --color-accent: #8e6e15;
+  --color-accent-dark: #ecc63c;
+}
+
+html {
+  font-family: var(--font-serif);
+  line-height: 1.75;
+}
+
+@media (prefers-color-scheme: light) {
+  html {
+    background-color: var(--color-bg);
+    color: rgb(var(--color-fg));
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    background-color: var(--color-bg-dark);
+    color: rgb(var(--color-fg-dark));
+    color-scheme: dark;
+  }
+}
