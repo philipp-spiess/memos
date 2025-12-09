@@ -9,6 +9,23 @@ interface MemoPlayerProps {
   words: Word[]
 }
 
+// Words that often indicate a topic shift; use lower-case for matching
+const SHIFT_WORDS = new Set([
+  'so',
+  'anyway',
+  'anyways',
+  'by',
+  'next',
+  'also',
+  'but',
+  'yeah',
+  'okay',
+  'alright',
+])
+
+const WORD_CAP = 120 // max words per paragraph before we force a break
+const SEC_CAP = 15 // safety cap on paragraph duration in seconds
+
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
@@ -16,6 +33,114 @@ function formatTime(seconds: number): string {
 }
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+
+function percentile(values: number[], p: number): number {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const idx = Math.min(sorted.length - 1, Math.floor(p * (sorted.length - 1)))
+  return sorted[idx]
+}
+
+type Sentence = {
+  startIdx: number
+  endIdx: number
+  wordCount: number
+  duration: number
+  startsWithShift: boolean
+  gapBefore: number
+}
+
+// Build sentence metadata from words array so we can group into paragraphs.
+function buildSentences(words: Word[]): Sentence[] {
+  const sentences: Sentence[] = []
+  if (!words.length) return sentences
+
+  let startIdx = 0
+  let gapBefore = 0
+
+  for (let i = 0; i < words.length; i++) {
+    const text = words[i].text
+    const isEnd = /[.!?]["']?$/.test(text.trim())
+
+    if (isEnd || i === words.length - 1) {
+      // find first/last meaningful word to anchor timing and counts
+      let first = startIdx
+      while (first <= i && words[first].text.trim() === '') first++
+      let last = i
+      while (last >= startIdx && words[last].text.trim() === '') last--
+
+      if (first <= last) {
+        const wordCount = words
+          .slice(first, last + 1)
+          .filter((w) => w.text.trim() !== '').length
+
+        const startsWith = words[first].text.replace(/^[\"'“”]+/, '').toLowerCase()
+        const startsWithShift =
+          SHIFT_WORDS.has(startsWith) ||
+          startsWith === 'the' && ['other', 'next'].includes(words[first + 1]?.text?.toLowerCase() || '')
+
+        sentences.push({
+          startIdx: startIdx,
+          endIdx: i,
+          wordCount,
+          duration: words[last].end - words[first].start,
+          startsWithShift,
+          gapBefore,
+        })
+      }
+
+      startIdx = i + 1
+      gapBefore = 0
+      if (i + 1 < words.length) {
+        gapBefore = Math.max(0, words[i + 1].start - words[i].end)
+      }
+    }
+  }
+
+  return sentences
+}
+
+// Convert sentences into arrays of word indices representing paragraphs.
+function buildParagraphs(words: Word[]): number[][] {
+  const sentences = buildSentences(words)
+  if (!sentences.length) return []
+
+  const gaps = sentences.slice(1).map((s) => s.gapBefore)
+  const pauseThreshold = Math.max(0.8, percentile(gaps, 0.9))
+
+  const paragraphs: number[][] = []
+  let current: number[] = []
+  let wordCount = 0
+  let duration = 0
+
+  sentences.forEach((s, idx) => {
+    const shouldBreak =
+      current.length > 0 &&
+      (s.gapBefore >= pauseThreshold ||
+        s.startsWithShift ||
+        wordCount + s.wordCount > WORD_CAP ||
+        duration + s.duration > SEC_CAP)
+
+    if (shouldBreak) {
+      paragraphs.push(current)
+      current = []
+      wordCount = 0
+      duration = 0
+    }
+
+    for (let i = s.startIdx; i <= s.endIdx; i++) {
+      current.push(i)
+    }
+    wordCount += s.wordCount
+    duration += s.duration
+
+    if (idx === sentences.length - 1 && current.length) {
+      paragraphs.push(current)
+    }
+  })
+
+  return paragraphs
+}
 
 export function MemoPlayer({ audioKey, transcript, words }: MemoPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -27,12 +152,19 @@ export function MemoPlayer({ audioKey, transcript, words }: MemoPlayerProps) {
   const [duration, setDuration] = useState(0)
   const [playbackRate, setPlaybackRate] = useState(1)
 
-  // Find the current word index based on time
-  const currentWordIndex = words.findIndex(
-    (word, i) =>
-      currentTime >= word.start &&
-      (i === words.length - 1 || currentTime < words[i + 1].start)
-  )
+  // Find the current word index based on time (skip pure spacing tokens)
+  const currentWordIndex = (() => {
+    for (let i = 0; i < words.length; i++) {
+      if (words[i].text.trim() === '') continue
+      const nextStart = i === words.length - 1 ? Infinity : words[i + 1].start
+      if (currentTime >= words[i].start && currentTime < nextStart) {
+        return i
+      }
+    }
+    return -1
+  })()
+
+  const paragraphs = buildParagraphs(words)
 
   // Auto-scroll to keep active word visible
   useEffect(() => {
@@ -131,30 +263,36 @@ export function MemoPlayer({ audioKey, transcript, words }: MemoPlayerProps) {
         className="flex-1 overflow-y-auto pb-24"
       >
         {hasWords ? (
-          <p className="leading-relaxed">
-            {words.map((word, i) => {
-              const isActive = i === currentWordIndex
-              const isPast = i < currentWordIndex
+          <div className="leading-relaxed space-y-4">
+            {paragraphs.map((para, pIdx) => (
+              <p key={pIdx}>
+                {para.map((wordIdx) => {
+                  const word = words[wordIdx]
+                  const isActive = wordIdx === currentWordIndex && word.text.trim() !== ''
+                  const isPast = wordIdx < currentWordIndex && word.text.trim() !== ''
 
-              return (
-                <span
-                  key={i}
-                  ref={isActive ? activeWordRef : null}
-                  onClick={() => handleWordClick(word)}
-                  className={`cursor-pointer transition-colors hover:text-[var(--color-accent)] dark:hover:text-[var(--color-accent-dark)] ${
-                    isActive
-                      ? 'text-[var(--color-accent)] dark:text-[var(--color-accent-dark)] font-medium'
-                      : isPast
-                        ? 'text-[var(--color-muted)] dark:text-[var(--color-muted-dark)]'
-                        : ''
-                  }`}
-                >
-                  {word.text}
-                  {i < words.length - 1 ? ' ' : ''}
-                </span>
-              )
-            })}
-          </p>
+                  return (
+                    <span
+                      key={wordIdx}
+                      ref={isActive ? activeWordRef : null}
+                      onClick={word.text.trim() ? () => handleWordClick(word) : undefined}
+                      className={`${
+                        word.text.trim() ? 'cursor-pointer' : 'cursor-default'
+                      } transition-colors hover:text-[var(--color-accent)] dark:hover:text-[var(--color-accent-dark)] ${
+                        isActive
+                          ? 'text-[var(--color-accent)] dark:text-[var(--color-accent-dark)] font-medium'
+                          : isPast
+                            ? 'text-[var(--color-muted)] dark:text-[var(--color-muted-dark)]'
+                            : ''
+                      }`}
+                    >
+                      {word.text}
+                    </span>
+                  )
+                })}
+              </p>
+            ))}
+          </div>
         ) : (
           <p className="whitespace-pre-wrap">{transcript}</p>
         )}
