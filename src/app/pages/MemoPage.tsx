@@ -15,8 +15,11 @@ function formatDate(date: Date): string {
 }
 
 async function getMemo(id: string) {
+  // Strip query strings for lookup, but display id based on the actual object key
+  const cleanId = decodeURIComponent(id).split("?")[0];
+
   // Find the audio file with this id
-  const list = await env.R2.list({ prefix: id });
+  const list = await env.R2.list({ prefix: cleanId });
 
   const audioFile = list.objects.find(
     (obj) =>
@@ -40,10 +43,12 @@ async function getMemo(id: string) {
     return null;
   }
 
+  const displayId = audioFile.key.replace(/\.[^.]+$/, "");
+
   return {
     key: audioFile.key,
-    id,
-    title: metadata.title || id.replace(/^\d+-/, "").replace(/-/g, " "),
+    id: displayId,
+    title: metadata.title || displayId.replace(/^\d+-/, "").replace(/-/g, " "),
     uploaded: audioFile.uploaded,
     transcript: metadata.transcript,
     words: metadata.words || [],
