@@ -1,9 +1,10 @@
-import { env } from "cloudflare:workers";
-import type { MemoMetadata, Word } from "../types";
 import { MemoPlayer } from "../components/MemoPlayer";
+import type { MemoDetail } from "../types";
+import { getMemoDetail } from "../lib/memos";
 
 interface MemoPageProps {
   id: string;
+  memo?: MemoDetail | null;
 }
 
 function formatDate(date: Date): string {
@@ -15,48 +16,11 @@ function formatDate(date: Date): string {
 }
 
 async function getMemo(id: string) {
-  // Strip query strings for lookup, but display id based on the actual object key
-  const cleanId = decodeURIComponent(id).split("?")[0];
-
-  // Find the audio file with this id
-  const list = await env.R2.list({ prefix: cleanId });
-
-  const audioFile = list.objects.find(
-    (obj) =>
-      !obj.key.endsWith(".json") && obj.key.match(/\.(m4a|mp3|wav|ogg|webm)$/i)
-  );
-
-  if (!audioFile) {
-    return null;
-  }
-
-  const metadataKey = audioFile.key.replace(/\.[^.]+$/, ".json");
-  const metadataObject = await env.R2.get(metadataKey);
-
-  if (!metadataObject) {
-    return null;
-  }
-
-  const metadata = (await metadataObject.json()) as MemoMetadata;
-
-  if (!metadata.transcript) {
-    return null;
-  }
-
-  const displayId = audioFile.key.replace(/\.[^.]+$/, "");
-
-  return {
-    key: audioFile.key,
-    id: displayId,
-    title: metadata.title || displayId.replace(/^\d+-/, "").replace(/-/g, " "),
-    uploaded: audioFile.uploaded,
-    transcript: metadata.transcript,
-    words: metadata.words || [],
-  };
+  return getMemoDetail(id);
 }
 
-export async function MemoPage({ id }: MemoPageProps) {
-  const memo = await getMemo(id);
+export async function MemoPage({ id, memo: memoProp }: MemoPageProps) {
+  const memo = memoProp ?? (await getMemo(id));
 
   if (!memo) {
     return (

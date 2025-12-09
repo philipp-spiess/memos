@@ -1,26 +1,30 @@
 import stylesUrl from './styles.css?url'
+import type { RequestInfo } from 'rwsdk/runtime/requestInfo/types'
+import type { AppContext } from './types'
 
 const faviconHref = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Recording dot"><circle cx="32" cy="32" r="16" fill="#e11d48" /></svg>'
 )}`
 
-export const Document: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+type DocumentProps = RequestInfo<any, AppContext> & { children: React.ReactNode }
+
+export const Document: React.FC<DocumentProps> = ({ children, ctx }) => {
+  const title = ctx?.meta?.title ?? 'Talking into the Void'
+  const description =
+    ctx?.meta?.description ?? 'A minimal interface for browsing and listening to transcribed voice memos.'
+  const image = ctx?.meta?.image ?? '/og.png'
+
+  return (
   <html lang="en">
     <head>
       <meta charSet="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>Talking into the Void</title>
-      <meta
-        name="description"
-        content="A minimal interface for browsing and listening to transcribed voice memos."
-      />
-      <meta property="og:title" content="Talking into the Void" />
-      <meta
-        property="og:description"
-        content="A minimal interface for browsing and listening to transcribed voice memos."
-      />
+      <title>{title}</title>
+      <meta name="description" content={description} />
+      <meta property="og:title" content={title} />
+      <meta property="og:description" content={description} />
       <meta property="og:type" content="website" />
-      <meta property="og:image" content="/og.png" />
+      <meta property="og:image" content={image} />
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       <link
@@ -36,4 +40,5 @@ export const Document: React.FC<{ children: React.ReactNode }> = ({ children }) 
       <script type="module" src="/src/client.tsx" />
     </body>
   </html>
-)
+  )
+}

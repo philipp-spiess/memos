@@ -7,9 +7,8 @@ import { setCommonHeaders } from '@/app/headers'
 import { Home } from '@/app/pages/Home'
 import { MemoPage } from '@/app/pages/MemoPage'
 import { transcribeAudio } from '@/app/lib/transcribe'
-import type { MemoMetadata } from '@/app/types'
-
-export type AppContext = {}
+import { getMemoDetail } from '@/app/lib/memos'
+import type { AppContext, MemoMetadata } from '@/app/types'
 
 const app = defineApp([
   setCommonHeaders(),
@@ -35,7 +34,24 @@ const app = defineApp([
   }),
   render(Document, [
     route('/', Home),
-    route('/:id', ({ params }: { params: { id: string } }) => <MemoPage id={params.id} />),
+    route('/:id', async ({ params, ctx }: { params: { id: string }; ctx: AppContext }) => {
+      const memo = await getMemoDetail(params.id)
+      ctx.memo = memo
+      if (memo) {
+        ctx.meta = {
+          title: `${memo.title} • Talking into the Void`,
+          description: memo.transcript.slice(0, 150),
+          image: '/og.png',
+        }
+      } else {
+        ctx.meta = {
+          title: 'Talking into the Void',
+          description: 'A minimal interface for browsing and listening to transcribed voice memos.',
+          image: '/og.png',
+        }
+      }
+      return <MemoPage id={params.id} memo={memo} />
+    }),
   ]),
 ])
 

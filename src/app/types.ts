@@ -22,3 +22,24 @@ export interface Memo {
   transcript: string
   transcribedAt: string
 }
+
+// Full memo payload used on individual memo pages
+export interface MemoDetail {
+  id: string
+  key: string
+  title: string
+  uploaded: Date
+  transcript: string
+  words: Word[]
+}
+
+export interface PageMeta {
+  title?: string
+  description?: string
+  image?: string
+}
+
+export interface AppContext {
+  memo?: MemoDetail | null
+  meta?: PageMeta
+}
