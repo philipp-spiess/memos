@@ -20,6 +20,7 @@ export const Document: React.FC<{ children: React.ReactNode }> = ({ children }) 
         content="A minimal interface for browsing and listening to transcribed voice memos."
       />
       <meta property="og:type" content="website" />
+      <meta property="og:image" content="/og.png" />
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       <link
